@@ -28,17 +28,17 @@ pub struct Config {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// check a program whether is correct.
-    Check { program: PathBuf },
-    /// Recheck the seeds whether are correct.
-    ReCheck,
-    /// transform a program to a fuzzer.
-    Transform {
+    Check {
         program: PathBuf,
-        #[arg(short, default_value = "true")]
-        use_cons: bool,
-        /// corpora used to perform transform check
-        #[arg(short = 'p', default_value = "None")]
-        corpora: Option<PathBuf>,
+        /// Maximum number of LLM repair attempts for syntax errors
+        #[arg(short = 'r', long, default_value = "3")]
+        max_retries: Option<usize>,
+    },
+    /// Recheck the seeds whether are correct.
+    ReCheck {
+        /// Maximum number of LLM repair attempts for syntax errors
+        #[arg(short = 'r', long, default_value = "3")]
+        max_retries: Option<usize>,
     },
     /// Fuse the programs in seeds to fuzzers.
     FuseFuzzer {
@@ -52,6 +52,15 @@ enum Commands {
         #[arg(short, default_value = "10")]
         cpu_cores: usize,
         seed_dir: Option<PathBuf>,
+    },
+    /// transform a program to a fuzzer.
+    Transform {
+        program: PathBuf,
+        #[arg(short, default_value = "true")]
+        use_cons: bool,
+        /// corpora used to perform transform check
+        #[arg(short = 'p', default_value = "None")]
+        corpora: Option<PathBuf>,
     },
     /// Run a synthesized fuzzer in the fuzz dir.
     FuzzerRun {
@@ -123,17 +132,17 @@ pub fn transform(
     Ok(())
 }
 
-pub fn check(project: String, program: &Path) -> Result<Option<ProgramError>> {
+pub fn check(project: String, program: &Path, max_retries: usize) -> Result<Option<ProgramError>> {
     let deopt = Deopt::new(project)?;
     let executor = Executor::new(&deopt)?;
-    let has_err = executor.check_program_is_correct(program)?;
+    let has_err = executor.check_program_is_correct_with_repair(program, max_retries)?;
     Ok(has_err)
 }
 
-pub fn recheck(project: String) -> Result<()> {
+pub fn recheck(project: String, max_retries: usize) -> Result<()> {
     let mut deopt = Deopt::new(project)?;
     let mut executor = Executor::new(&deopt)?;
-    executor.recheck_seed(&mut deopt)?;
+    executor.recheck_seed_with_repair(&mut deopt, max_retries)?;
     Ok(())
 }
 
@@ -344,8 +353,9 @@ fn main() -> ExitCode {
     prompt_fuzz::config::Config::init_test(&config.project);
     let project = config.project.clone();
     match &config.command {
-        Commands::Check { program } => {
-            let res: Option<ProgramError> = check(project, program).unwrap();
+        Commands::Check { program, max_retries } => {
+            let max_retries = max_retries.unwrap_or(3);
+            let res: Option<ProgramError> = check(project, program, max_retries).unwrap();
             if let Some(err) = res {
                 let dump_err = serde_json::to_string(&err).unwrap();
                 eprintln!("{dump_err}");
@@ -353,8 +363,9 @@ fn main() -> ExitCode {
             }
             return ExitCode::SUCCESS;
         }
-        Commands::ReCheck => {
-            recheck(project).unwrap();
+        Commands::ReCheck { max_retries } => {
+            let max_retries = max_retries.unwrap_or(3);
+            recheck(project, max_retries).unwrap();
             return ExitCode::SUCCESS;
         }
         Commands::Transform {

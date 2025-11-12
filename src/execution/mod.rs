@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod logger;
 pub mod sanitize;
+mod llm_repair;
 
 use self::logger::ProgramError;
 use crate::config::{get_config, get_minimize_compile_flag};

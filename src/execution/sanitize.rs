@@ -19,6 +19,7 @@ use self::utils::cleanup_sanitize_dir;
 use super::{
     ast::remove_duplicate_definition,
     logger::{ProgramError, TimeUsage},
+    llm_repair::LLMRepair,  // Add this import
     Executor,
 };
 
@@ -40,6 +41,66 @@ impl Executor {
         }
         let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
         Ok(Some(ProgramError::Syntax(err_msg)))
+    }
+
+    /// check whether the c program is syntactically correct, with LLM repair attempts
+    fn is_program_syntax_correct_with_repair(
+        &self,
+        program_path: &Path,
+        max_retries: usize,
+    ) -> Result<Option<ProgramError>> {
+        let mut current_attempt = 0;
+
+        loop {
+            let time_logger = TimeUsage::new(get_file_dirname(program_path));
+            let output: std::process::Output = Command::new("clang++")
+                .stdout(Stdio::null())
+                .arg("-fsyntax-only")
+                .arg(&self.header_cmd)
+                .arg(program_path.as_os_str())
+                .output()
+                .expect("failed to execute the syntax check process");
+            time_logger.log("syntax")?;
+
+            let success = output.status.success();
+            if success {
+                if current_attempt > 0 {
+                    log::info!("✓ Syntax fixed after {} attempts for {:?}",
+                              current_attempt, program_path);
+                }
+                return Ok(None);
+            }
+
+            let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
+
+            // If we've exhausted retries, return the error
+            if current_attempt >= max_retries {
+                log::warn!("Failed to fix syntax after {} attempts for {:?}",
+                          max_retries, program_path);
+                return Ok(Some(ProgramError::Syntax(err_msg)));
+            }
+
+            // Attempt to fix with LLM
+            log::info!("Attempting to fix syntax error (attempt {}/{}) for {:?}",
+                      current_attempt + 1, max_retries, program_path);
+            log::debug!("Error message: {}", err_msg);
+
+            match LLMRepair::call_llm_to_fix_syntax(program_path, &err_msg) {
+                Ok(fixed_code) => {
+                    // Write the fixed code back to the file
+                    std::fs::write(program_path, fixed_code)?;
+                    current_attempt += 1;
+                    log::info!("LLM provided fix, retrying syntax check...");
+                }
+                Err(e) => {
+                    log::error!("LLM repair failed: {}", e);
+                    return Ok(Some(ProgramError::Syntax(format!(
+                        "Original error: {}\nLLM repair failed: {}",
+                        err_msg, e
+                    ))));
+                }
+            }
+        }
     }
 
     /// check whether the program is correct in compilation and linkage.
@@ -154,10 +215,57 @@ impl Executor {
         Ok(None)
     }
 
+    /// Updated version that uses repair
+    pub fn check_program_is_correct_with_repair(
+        &self,
+        seed_path: &Path,
+        max_syntax_retries: usize,
+    ) -> Result<Option<ProgramError>> {
+        // Try to fix syntax errors with LLM
+        if let Some(err) = self.is_program_syntax_correct_with_repair(seed_path, max_syntax_retries)? {
+            return Ok(Some(err));
+        }
+
+        // Continue with other checks (unchanged)
+        if let Some(err) = self.is_program_link_correct(seed_path)? {
+            return Ok(Some(err));
+        }
+        if let Some(err) = self.is_program_execute_correct(seed_path)? {
+            return Ok(Some(err));
+        }
+        if let Some(err) = self.is_program_fuzz_correct(seed_path)? {
+            return Ok(Some(err));
+        }
+        if let Some(err) = self.is_program_coverage_correct(seed_path)? {
+            return Ok(Some(err));
+        }
+        Ok(None)
+    }
+
     pub fn check_programs_are_correct(
         &self,
         programs: &[Program],
         deopt: &Deopt,
+    ) -> Result<Vec<Option<ProgramError>>> {
+        // Check environment variable for repair setting
+        let max_retries = std::env::var("LLM_REPAIR_RETRIES")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0); // Default: no repair
+
+        if max_retries > 0 {
+            log::info!("LLM repair enabled with max {} retries", max_retries);
+        }
+
+        self.check_programs_are_correct_with_repair(programs, deopt, max_retries)
+    }
+
+    /// Batch checking with LLM repair
+    pub fn check_programs_are_correct_with_repair(
+        &self,
+        programs: &[Program],
+        deopt: &Deopt,
+        max_syntax_retries: usize,
     ) -> Result<Vec<Option<ProgramError>>> {
         let mut program_paths = Vec::new();
         for program in programs.iter() {
@@ -168,17 +276,21 @@ impl Executor {
             std::fs::write(&temp_path, content)?;
             program_paths.push(temp_path);
         }
-        let res = self.concurrent_check_batch(&program_paths)?;
-        // print the time usage of the sanitization
+
+        let res = if max_syntax_retries > 0 {
+            self.concurrent_check_batch_with_repair(&program_paths, max_syntax_retries)?
+        } else {
+            self.concurrent_check_batch(&program_paths)?
+        };
+
         utils::print_san_cost(&program_paths)?;
 
-        // clean out the failure cache.
+        // clean out the failure cache
         for (i, has_err) in res.iter().enumerate() {
             let path = &program_paths[i];
             let dir = get_file_dirname(path);
             cleanup_sanitize_dir(&dir)?;
             if let Some(err) = has_err {
-                // skip delete the hang and fuzzer error programs, those may contain true bugs.
                 if let ProgramError::Hang(_) = err {
                     continue;
                 }
@@ -236,6 +348,53 @@ impl Executor {
         Ok(has_errs)
     }
 
+    /// Concurrent checking with repair support
+    pub fn concurrent_check_batch_with_repair(
+        &self,
+        programs: &[PathBuf],
+        max_retries: usize,
+    ) -> Result<Vec<Option<ProgramError>>> {
+        let mut childs = Vec::new();
+        for program in programs {
+            let child = Command::new("cargo")
+                .env("RUST_BACKTRACE", "full")
+                .arg("run")
+                .arg("-q")
+                .arg("--bin")
+                .arg("harness")
+                .arg("--")
+                .arg(get_library_name())
+                .arg("check")
+                .arg(program)
+                .arg("--max-retries")
+                .arg(max_retries.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("failed to execute the concurrent transform process");
+            childs.push(child);
+        }
+
+        let mut has_errs: Vec<Option<ProgramError>> = Vec::new();
+        for (i, child) in childs.into_iter().enumerate() {
+            let output = child.wait_with_output().expect("command wasn't running");
+            let program = programs.get(i).unwrap();
+            if !output.status.success() {
+                let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
+                let p_err = serde_json::from_str::<ProgramError>(&err_msg);
+                if let Ok(err) = p_err {
+                    has_errs.push(Some(err));
+                } else {
+                    has_errs.push(Some(ProgramError::Fuzzer(err_msg)));
+                }
+                log::trace!("error: {program:?}");
+            } else {
+                has_errs.push(None);
+                log::trace!("correct: {program:?}");
+            }
+        }
+        Ok(has_errs)
+    }
 
     // Evolving the fuzzing corpus by finding the new coverage corpus files and merge them in shared corpus.
     fn evolve_corpus(&self, program_path: &Path) -> Result<()> {
@@ -298,6 +457,49 @@ impl Executor {
             // recheck the program
             let corpus = self.deopt.get_library_shared_corpus_dir()?;
             let work_seed_path = self.deopt.get_work_seed_by_id(seed_id)?;
+            let binary_out = work_seed_path.with_extension("out");
+            let has_err = self.execute_pool(&binary_out, &corpus);
+            if let Some(err_msg) = has_err {
+                log::warn!("seed: {} is rechecked as Error!", seed_id);
+                let seed = self.deopt.get_seed_path_by_id(seed_id)?;
+                self.deopt.save_err_program(&seed_program, &err_msg)?;
+                std::fs::remove_file(succ_seed)?;
+                if seed.exists() {
+                    std::fs::remove_file(seed)?;
+                    deopt.delete_seed_from_queue(&seed_program);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// After the first half of converge, performs sanitization on the seeds again, with repair
+    pub fn recheck_seed_with_repair(&mut self, deopt: &mut Deopt, max_retries: usize) -> Result<()> {
+        log::info!("Recheck the saved seeds and remove the error programs within them.");
+        let succ_seed_dir = self.deopt.get_library_succ_seed_dir()?;
+        let succ_seeds = crate::deopt::utils::read_sort_dir(&succ_seed_dir)?;
+        for succ_seed in &succ_seeds {
+            let seed_program = Program::load_from_path(succ_seed)?;
+            let seed_id = seed_program.id;
+            self.compile_seed(seed_id)?;
+
+            let corpus = self.deopt.get_library_shared_corpus_dir()?;
+            let work_seed_path = self.deopt.get_work_seed_by_id(seed_id)?;
+
+            // Try to fix syntax if needed
+            if let Some(ProgramError::Syntax(_)) = self.is_program_syntax_correct_with_repair(&work_seed_path, max_retries)? {
+                log::warn!("seed: {} has unfixable syntax errors during recheck!", seed_id);
+                let seed = self.deopt.get_seed_path_by_id(seed_id)?;
+                self.deopt.save_err_program(&seed_program, &ProgramError::Syntax("Unfixable during recheck".to_string()))?;
+                std::fs::remove_file(succ_seed)?;
+                if seed.exists() {
+                    std::fs::remove_file(seed)?;
+                    deopt.delete_seed_from_queue(&seed_program);
+                }
+                continue;
+            }
+
+            // recheck the program execution
             let binary_out = work_seed_path.with_extension("out");
             let has_err = self.execute_pool(&binary_out, &corpus);
             if let Some(err_msg) = has_err {
@@ -394,8 +596,8 @@ mod tests {
             "sanitize",
             "cjson_cov_succ.cc",
         ]
-        .iter()
-        .collect();
+            .iter()
+            .collect();
         let work_path = deopt.get_work_seed_by_id(99999)?;
         std::fs::copy(cov_succ_program_path, &work_path)?;
         let has_err = executor.check_program_is_correct(&work_path)?;
@@ -409,8 +611,8 @@ mod tests {
             "sanitize",
             "cjson_cov_fail.cc",
         ]
-        .iter()
-        .collect();
+            .iter()
+            .collect();
         let work_path = deopt.get_work_seed_by_id(888888)?;
         std::fs::copy(cov_fail_program_path, &work_path)?;
         let has_err = executor.check_program_is_correct(&work_path)?;
