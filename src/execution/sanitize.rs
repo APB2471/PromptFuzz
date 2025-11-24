@@ -200,6 +200,7 @@ impl Executor {
         for program in programs {
             let child = Command::new("cargo")
                 .env("RUST_BACKTRACE", "full")
+                .env("RUST_LOG", "off")
                 .arg("run")
                 .arg("-q")
                 .arg("--bin")
@@ -221,10 +222,28 @@ impl Executor {
             let program = programs.get(i).unwrap();
             if !output.status.success() {
                 let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
-                let p_err = serde_json::from_str::<ProgramError>(&err_msg);
-                if let Ok(err) = p_err {
+                
+                // --- FIX START ---
+                // Iterate over lines to find the one containing the JSON error report
+                let mut parsed_err = None;
+                for line in err_msg.lines().rev() {
+                    // Trim whitespace to handle potential formatting issues
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                         if let Ok(err) = serde_json::from_str::<ProgramError>(trimmed) {
+                             parsed_err = Some(err);
+                             break;
+                         }
+                    }
+                }
+                // --- FIX END ---
+
+                if let Some(err) = parsed_err {
                     has_errs.push(Some(err));
                 } else {
+                    // If parsing still fails, log for debugging and save as Fuzzer error
+                    // log::warn!("Failed to parse error JSON for {:?}", program);
+                    // log::debug!("Raw stderr: {}", err_msg);
                     has_errs.push(Some(ProgramError::Fuzzer(err_msg)));
                 }
                 log::trace!("error: {program:?}");
@@ -234,7 +253,8 @@ impl Executor {
             }
         }
         Ok(has_errs)
-    }
+
+        }
 
 
     // Evolving the fuzzing corpus by finding the new coverage corpus files and merge them in shared corpus.
