@@ -19,7 +19,7 @@ use self::utils::cleanup_sanitize_dir;
 use super::{
     ast::remove_duplicate_definition,
     logger::{ProgramError, TimeUsage},
-    llm_repair::LLMRepair,  // Add this import
+    llm_repair::LLMRepair,
     Executor,
 };
 
@@ -311,7 +311,8 @@ impl Executor {
         let mut childs = Vec::new();
         for program in programs {
             let child = Command::new("cargo")
-                .env("RUST_BACKTRACE", "full")
+                .env("RUST_BACKTRACE", "0")
+                .env("RUST_LOG", "off")
                 .arg("run")
                 .arg("-q")
                 .arg("--bin")
@@ -326,17 +327,30 @@ impl Executor {
                 .expect("failed to execute the concurrent transform process");
             childs.push(child);
         }
+
         let mut has_errs: Vec<Option<ProgramError>> = Vec::new();
-        // for each child process, wait output and log the error reason.
         for (i, child) in childs.into_iter().enumerate() {
             let output = child.wait_with_output().expect("command wasn't running");
             let program = programs.get(i).unwrap();
             if !output.status.success() {
                 let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
-                let p_err = serde_json::from_str::<ProgramError>(&err_msg);
-                if let Ok(err) = p_err {
+
+                // Iterate over lines to find the one containing the JSON error report
+                let mut parsed_err = None;
+                for line in err_msg.lines().rev() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                        if let Ok(err) = serde_json::from_str::<ProgramError>(trimmed) {
+                            parsed_err = Some(err);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(err) = parsed_err {
                     has_errs.push(Some(err));
                 } else {
+                    log::warn!("Failed to parse error JSON for {:?}", program);
                     has_errs.push(Some(ProgramError::Fuzzer(err_msg)));
                 }
                 log::trace!("error: {program:?}");
@@ -357,7 +371,8 @@ impl Executor {
         let mut childs = Vec::new();
         for program in programs {
             let child = Command::new("cargo")
-                .env("RUST_BACKTRACE", "full")
+                .env("RUST_BACKTRACE", "0")
+                .env("RUST_LOG", "off")
                 .arg("run")
                 .arg("-q")
                 .arg("--bin")
@@ -381,10 +396,23 @@ impl Executor {
             let program = programs.get(i).unwrap();
             if !output.status.success() {
                 let err_msg = String::from_utf8_lossy(&output.stderr).to_string();
-                let p_err = serde_json::from_str::<ProgramError>(&err_msg);
-                if let Ok(err) = p_err {
+
+                // Iterate over lines to find the one containing the JSON error report
+                let mut parsed_err = None;
+                for line in err_msg.lines().rev() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+                        if let Ok(err) = serde_json::from_str::<ProgramError>(trimmed) {
+                            parsed_err = Some(err);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(err) = parsed_err {
                     has_errs.push(Some(err));
                 } else {
+                    log::warn!("Failed to parse error JSON for {:?}", program);
                     has_errs.push(Some(ProgramError::Fuzzer(err_msg)));
                 }
                 log::trace!("error: {program:?}");
@@ -601,7 +629,6 @@ mod tests {
         let work_path = deopt.get_work_seed_by_id(99999)?;
         std::fs::copy(cov_succ_program_path, &work_path)?;
         let has_err = executor.check_program_is_correct(&work_path)?;
-        //println!("{has_err:#?}");
         assert!(has_err.is_none());
 
         // this should be sanitized by coverage.
@@ -630,12 +657,6 @@ mod tests {
     fn test_sanitization_for_a_program() -> Result<()> {
         crate::config::Config::init_test("cJSON");
         let deopt = Deopt::new("cJSON".to_string())?;
-        //let program_path: std::path::PathBuf =
-        //    [crate::Deopt::get_crate_dir()?, "testsuites", "new_test.cc"]
-        //        .iter()
-        //        .collect();
-        //let work_path = deopt.get_work_seed_by_id(0)?;
-        //std::fs::copy(program_path, &work_path)?;
         let executor = Executor::new(&deopt)?;
         let res = executor.check_program_is_correct(&deopt.get_work_seed_by_id(0)?);
         println!("{res:?}");
