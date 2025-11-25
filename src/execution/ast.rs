@@ -51,9 +51,13 @@ impl Executor {
 
             // Implicitly include FDSan.h to handle assert_file_closed declarations
             // that may be present from FDSan transformations
-            let fdsan_header = PathBuf::from(Deopt::get_crate_dir()?).join("src/extern/FDSan.h");
+            // Use current directory instead of compile-time CARGO_MANIFEST_DIR
+            let fdsan_header = std::env::current_dir()?.join("src/extern/FDSan.h");
             if fdsan_header.exists() {
-                cmd = cmd.arg("-include").arg(fdsan_header);
+                log::debug!("Including FDSan.h from: {:?}", fdsan_header);
+                cmd = cmd.arg("-include").arg(&fdsan_header);
+            } else {
+                log::warn!("FDSan.h not found at: {:?}", fdsan_header);
             }
         }
 
