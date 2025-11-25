@@ -51,7 +51,7 @@ impl Executor {
 
             // Implicitly include FDSan.h to handle assert_file_closed declarations
             // that may be present from FDSan transformations
-            let fdsan_header = Deopt::get_crate_dir()?.join("src/extern/FDSan.h");
+            let fdsan_header = PathBuf::from(Deopt::get_crate_dir()?).join("src/extern/FDSan.h");
             if fdsan_header.exists() {
                 cmd = cmd.arg("-include").arg(fdsan_header);
             }
