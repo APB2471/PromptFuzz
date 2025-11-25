@@ -31,7 +31,7 @@ enum Commands {
     Check {
         program: PathBuf,
         /// Maximum number of LLM repair attempts for syntax errors
-        #[arg(short = 'r', long, default_value = "3")]
+        #[arg(short = 'r', long, default_value = "0")]
         max_retries: Option<usize>,
     },
     /// Recheck the seeds whether are correct.
@@ -135,7 +135,13 @@ pub fn transform(
 pub fn check(project: String, program: &Path, max_retries: usize) -> Result<Option<ProgramError>> {
     let deopt = Deopt::new(project)?;
     let executor = Executor::new(&deopt)?;
-    let has_err = executor.check_program_is_correct_with_repair(program, max_retries)?;
+
+    let has_err = if max_retries > 0 {
+        executor.check_program_is_correct_with_repair(program, max_retries)?
+    } else {
+        executor.check_program_is_correct(program)?  // Use original non-repair version
+    };
+
     Ok(has_err)
 }
 
@@ -354,7 +360,7 @@ fn main() -> ExitCode {
     let project = config.project.clone();
     match &config.command {
         Commands::Check { program, max_retries } => {
-            let max_retries = max_retries.unwrap_or(3);
+            let max_retries = max_retries.unwrap_or(0);
             let res: Option<ProgramError> = check(project, program, max_retries).unwrap();
             if let Some(err) = res {
                 let dump_err = serde_json::to_string(&err).unwrap();
