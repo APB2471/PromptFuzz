@@ -1,7 +1,6 @@
 use eyre::Result;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::Duration;
 
 pub struct LLMRepair;
 
