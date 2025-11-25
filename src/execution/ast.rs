@@ -48,6 +48,13 @@ impl Executor {
         if use_fdp {
             let include_fdp = "-I".to_owned() + Deopt::get_fdp_path()?.to_str().unwrap();
             cmd = cmd.arg(include_fdp);
+
+            // Implicitly include FDSan.h to handle assert_file_closed declarations
+            // that may be present from FDSan transformations
+            let fdsan_header = Deopt::get_crate_dir()?.join("src/extern/FDSan.h");
+            if fdsan_header.exists() {
+                cmd = cmd.arg("-include").arg(fdsan_header);
+            }
         }
 
         //log::trace!("extract ast from {program:?}, cmd: {cmd:?}");
