@@ -12,6 +12,11 @@ ban:
   - pcap_remoteact_list
   - pcap_remoteact_close
   - pcap_remoteact_cleanup
+  - pcap_alloc_option
+  - pcap_free_option
+  - pcap_get_option_int
+  - pcap_set_option_int
+  - pcap_.*_option  # Ban all option-related internal functions
 init: "
 extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   // You MUST call `int pcap_activate(pcap_t *p)` immediately after any `pcap_t *pcap_create(const char *device, char *errbuf)` to activate the opened handler.

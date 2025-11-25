@@ -122,56 +122,77 @@ impl Fuzzer {
         Ok(())
     }
 
-    pub fn generate_until_n_success(
-        &mut self,
-        prompt: &mut Prompt,
-        logger: &mut ProgramLogger,
-    ) -> Result<Vec<Program>> {
-        log::trace!(
-            "Generate until {} sucess programs",
-            get_config().fuzz_round_succ
+pub fn generate_until_n_success(
+    &mut self,
+    prompt: &mut Prompt,
+    logger: &mut ProgramLogger,
+) -> Result<Vec<Program>> {
+    log::trace!(
+        "Generate until {} sucess programs",
+        get_config().fuzz_round_succ
+    );
+    let mut succ_programs = Vec::new();
+
+    while succ_programs.len() < get_config().fuzz_round_succ {
+        let mut programs = self.handler.generate(prompt)?;
+        for program in &mut programs {
+            program.id = self.deopt.inc_seed_id();
+        }
+
+        log::debug!(
+            "LLM generated {} programs. Sanitize those programs!",
+            programs.len()
         );
-        let mut succ_programs = Vec::new();
-
-        while succ_programs.len() < get_config().fuzz_round_succ {
-            let mut programs = self.handler.generate(prompt)?;
-            for program in &mut programs {
-                program.id = self.deopt.inc_seed_id();
-            }
-
-            log::debug!(
-                "LLM generated {} programs. Sanitize those programs!",
-                programs.len()
-            );
-            let check_res = self
-                .executor
-                .check_programs_are_correct(&programs, &self.deopt)?;
-            // Check each generated programs, and save thems according where they contains errors.
-            for (i, program) in programs.iter().enumerate() {
-                let has_err = check_res
-                    .get(i)
-                    .unwrap_or_else(|| panic!("cannot obtain check_res at `{i}`"));
-                // save as error programs
-                if let Some(err_msg) = has_err {
-                    self.deopt.save_err_program(program, err_msg)?;
-                    logger.log_err(err_msg);
+        let check_res = self
+            .executor
+            .check_programs_are_correct(&programs, &self.deopt)?;
+        // Check each generated programs, and save thems according where they contains errors.
+        for (i, program) in programs.iter().enumerate() {
+            let has_err = check_res
+                .get(i)
+                .unwrap_or_else(|| panic!("cannot obtain check_res at `{i}`"));
+            // save as error programs
+            if let Some(err_msg) = has_err {
+                self.deopt.save_err_program(program, err_msg)?;
+                logger.log_err(err_msg);
+            } else {
+                // --- FIX: Reload the program from disk in case it was repaired ---
+                let work_path = self.deopt.get_work_seed_by_id(program.id)?;
+                let final_program = if work_path.exists() {
+                    // Load the potentially repaired version from disk
+                    match Program::load_from_path(&work_path) {
+                        Ok(mut reloaded) => {
+                            // Preserve the original ID (load_from_path might parse it differently)
+                            reloaded.id = program.id;
+                            log::debug!("Reloaded program {} from disk (may have been repaired)", program.id);
+                            reloaded
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to reload program {} from {}: {}", program.id, work_path.display(), e);
+                            program.clone()
+                        }
+                    }
                 } else {
-                    succ_programs.push(program.clone());
-                    logger.log_succ();
-                }
-            }
-            logger.print_succ_round();
-            // if the combiantion continusely failed in a long time, shuffle the prompt to escape the bad combination;
-            if self
-                .schedule
-                .should_shuffle(logger.get_rc_succ(), logger.get_rc_total())
-            {
-                log::info!("Fuzzer stuck in the current prompt, choose a new one.");
-                break;
+                    // Work path doesn't exist (shouldn't happen), use original
+                    program.clone()
+                };
+
+                succ_programs.push(final_program);
+                logger.log_succ();
             }
         }
-        Ok(succ_programs)
+        logger.print_succ_round();
+        // if the combiantion continusely failed in a long time, shuffle the prompt to escape the bad combination;
+        if self
+            .schedule
+            .should_shuffle(logger.get_rc_succ(), logger.get_rc_total())
+        {
+            log::info!("Fuzzer stuck in the current prompt, choose a new one.");
+            break;
+        }
     }
+    Ok(succ_programs)
+}
 
     fn mutate_prompt(&mut self, prompt: &mut Prompt) -> Result<()> {
         let api_coverage = self.observer.compute_library_api_coverage()?;
@@ -221,7 +242,21 @@ impl Fuzzer {
             let mut has_new = false;
             for mut program in programs {
                 self.deopt.save_succ_program(&program)?;
-                let coverage = self.deopt.get_seed_coverage(program.id)?;
+                
+                // Wrap coverage extraction in error handling
+                let coverage = match self.deopt.get_seed_coverage(program.id) {
+                    Ok(cov) => cov,
+                    Err(e) => {
+                        log::warn!("Failed to extract coverage for program {}: {}", program.id, e);
+                        log::warn!("Skipping this seed due to AST extraction error");
+                        // Remove the bad seed
+                        if let Ok(seed_path) = self.deopt.get_succ_seed_path_by_id(program.id) {
+                            let _ = std::fs::remove_file(seed_path);
+                        }
+                        continue;
+                    }
+                };
+                
                 let unique_branches = self.observer.has_unique_branch(&coverage);
                 has_new = !unique_branches.is_empty();
                 program.update_quality(unique_branches, &self.deopt)?;

@@ -312,7 +312,7 @@ impl Executor {
         for program in programs {
             let child = Command::new("cargo")
                 .env("RUST_BACKTRACE", "0")
-                .env("RUST_LOG", "off")
+                .env("RUST_LOG", "info")
                 .arg("run")
                 .arg("-q")
                 .arg("--bin")
@@ -372,7 +372,7 @@ impl Executor {
         for program in programs {
             let child = Command::new("cargo")
                 .env("RUST_BACKTRACE", "0")
-                .env("RUST_LOG", "off")
+                .env("RUST_LOG", "info")
                 .arg("run")
                 .arg("-q")
                 .arg("--bin")
