@@ -10,7 +10,16 @@ pub fn minimize(deopt: &Deopt) -> Result<()> {
     let mut program_coverage: Vec<(PathBuf, f32)> = Vec::new();
     for file in crate::deopt::utils::read_sort_dir(&seeds_dir)? {
         let program = Program::load_from_path(&file)?;
-        let coverage_rate = Observer::compute_coverage_for_program(program.id, deopt)?;
+        // Wrap coverage extraction in error handling
+        let coverage_rate = match Observer::compute_coverage_for_program(program.id, deopt) {
+            Ok(rate) => rate,
+            Err(e) => {
+                log::warn!("Failed to extract coverage for program {} during minimize: {}", program.id, e);
+                log::warn!("Removing bad seed: {:?}", file);
+                let _ = std::fs::remove_file(&file);
+                continue;
+            }
+        };
         program_coverage.push((file, coverage_rate));
     }
     program_coverage.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -20,7 +29,19 @@ pub fn minimize(deopt: &Deopt) -> Result<()> {
     for (program_path, _) in program_coverage {
         let program = Program::load_from_path(&program_path)?;
         let seed = deopt.get_seed_path_by_id(program.id)?;
-        let coverage = deopt.get_seed_coverage(program.id)?;
+        // Wrap coverage extraction in error handling
+        let coverage = match deopt.get_seed_coverage(program.id) {
+            Ok(cov) => cov,
+            Err(e) => {
+                log::warn!("Failed to extract coverage for program {} during minimize: {}", program.id, e);
+                log::warn!("Skipping and removing bad seed: {:?}", program_path);
+                let _ = std::fs::remove_file(&program_path);
+                if seed.exists() {
+                    let _ = std::fs::remove_file(&seed);
+                }
+                continue;
+            }
+        };
         let unique_branches = observer.has_unique_branch(&coverage);
         if unique_branches.is_empty() {
             if seed.exists() {

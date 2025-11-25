@@ -230,7 +230,20 @@ impl Observer {
         let mut observer = Observer::new(deopt);
         deopt.load_programs_from_seeds()?;
         for program in deopt.seed_queue.iter() {
-            let coverage = deopt.get_seed_coverage(program.id)?;
+            // Wrap coverage extraction in error handling
+            let coverage = match deopt.get_seed_coverage(program.id) {
+                Ok(cov) => cov,
+                Err(e) => {
+                    log::warn!("Failed to extract coverage for program {} during sync: {}", program.id, e);
+                    log::warn!("Skipping this seed due to AST extraction error");
+                    // Remove the bad seed
+                    if let Ok(seed_path) = deopt.get_succ_seed_path_by_id(program.id) {
+                        let _ = std::fs::remove_file(&seed_path);
+                        log::debug!("Removed bad seed: {:?}", seed_path);
+                    }
+                    continue;
+                }
+            };
             let new_branches = observer.has_new_branch(&coverage);
             if !new_branches.is_empty() {
                 observer.merge_new_branch(&new_branches);
@@ -252,7 +265,18 @@ impl Observer {
         let seed_dir = self.deopt.get_library_seed_dir()?;
         for seed in read_sort_dir(&seed_dir)? {
             let mut program = Program::load_from_path(&seed)?;
-            let coverage = self.deopt.get_seed_coverage(program.id)?;
+            // Wrap coverage extraction in error handling
+            let coverage = match self.deopt.get_seed_coverage(program.id) {
+                Ok(cov) => cov,
+                Err(e) => {
+                    log::warn!("Failed to extract coverage for program {} during recompute: {}", program.id, e);
+                    log::warn!("Skipping this seed due to AST extraction error");
+                    // Remove the bad seed
+                    let _ = std::fs::remove_file(&seed);
+                    log::debug!("Removed bad seed: {:?}", seed);
+                    continue;
+                }
+            };
             let unique_branches = self.has_unique_branch(&coverage);
             if !unique_branches.is_empty() {
                 program.set_unique_branches(unique_branches);

@@ -571,7 +571,16 @@ impl Executor {
         for seed in &seeds {
             let seed_id = crate::program::Program::load_from_path(seed)?.id;
             self.eval_seed_coverage(seed_id)?;
-            let coverage = self.deopt.get_seed_coverage(seed_id)?;
+            // Wrap coverage extraction in error handling
+            let coverage = match self.deopt.get_seed_coverage(seed_id) {
+                Ok(cov) => cov,
+                Err(e) => {
+                    log::warn!("Failed to extract coverage for seed {} during calculate: {}", seed_id, e);
+                    log::warn!("Skipping and removing bad seed: {:?}", seed);
+                    let _ = std::fs::remove_file(seed);
+                    continue;
+                }
+            };
             let covered_branch = coverage.get_total_summary().count_covered_branches();
             log::info!("seed: {seed_id}, covered_branch: {covered_branch}");
             observer.merge_coverage(&coverage);
