@@ -1,0 +1,88 @@
+==========================================
+LLM Repair Test Suite
+==========================================
+
+=== Phase 1: Testing WITHOUT Repair (baseline) ===
+
+Testing valid_program.cc (no repair): DEBUG [prompt_fuzz::execution::ast] Including FDSan.h from: "/PromptFuzz/src/extern/FDSan.h"
+DEBUG [prompt_fuzz::execution::ast] Including FDSan.h from: "/PromptFuzz/src/extern/FDSan.h"
+DEBUG [prompt_fuzz::execution::ast] Including FDSan.h from: "/PromptFuzz/src/extern/FDSan.h"
+DEBUG [prompt_fuzz::execution::ast] Including FDSan.h from: "/PromptFuzz/src/extern/FDSan.h"
+DEBUG [prompt_fuzz::execution::ast] Including FDSan.h from: "/PromptFuzz/src/extern/FDSan.h"
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
+DEBUG [prompt_fuzz::execution] "/tmp/test_valid_program.out" running.
